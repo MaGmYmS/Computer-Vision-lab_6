@@ -1,126 +1,85 @@
 import cv2
 import numpy as np
-from matplotlib import pyplot as plt
-from scipy.ndimage import convolve as filter2
 
 
-def draw_quiver(u, v, before_img):
-    scale = 3
-    ax = plt.figure().gca()
-    ax.imshow(before_img, cmap='gray')
+def goodFeaturesToTrack(image, draw_corners=False):
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    # Поиск особенных точек с использованием функции goodFeaturesToTrack
+    corners = cv2.goodFeaturesToTrack(gray, maxCorners=100, qualityLevel=0.01, minDistance=10)
 
-    magnitude_avg = get_magnitude(u, v)
+    # Преобразуем координаты точек в целочисленные значения
+    corners_return = np.float32(corners)
 
-    for i in range(0, u.shape[0], 8):
-        for j in range(0, u.shape[1], 8):
-            dy = v[i, j] * scale
-            dx = u[i, j] * scale
-            magnitude = (dx ** 2 + dy ** 2) ** 0.5
-            # draw only significant changes
-            if magnitude > magnitude_avg:
-                ax.arrow(j, i, dx, dy, color='red')
+    if draw_corners:
+        corners_draw = np.int32(corners)
+        # Рисуем круги на найденных точках
+        for corner in corners_draw:
+            x, y = corner.ravel()
+            cv2.circle(image, (x, y), 3, (0, 255, 0), -1)
 
-    plt.draw()
-    plt.show()
+        # Отображаем изображение с найденными точками
+        cv2.imshow("Corners", image)
+        cv2.waitKey(0)
+        cv2.destroyAllWindows()
 
-
-def get_magnitude(u, v):
-    scale = 3
-    sum_magnitude = 0.0
-    counter = 0.0
-
-    for i in range(0, u.shape[0], 8):
-        for j in range(0, u.shape[1], 8):
-            counter += 1
-            dy = v[i, j] * scale
-            dx = u[i, j] * scale
-            magnitude = (dx ** 2 + dy ** 2) ** 0.5
-            sum_magnitude += magnitude
-
-    mag_avg = sum_magnitude / counter
-
-    return mag_avg
+    return corners
 
 
-def get_derivatives(img1, img2):
-    # derivative masks
-    x_kernel = np.array([[-1, 1], [-1, 1]]) * 0.25
-    y_kernel = np.array([[-1, -1], [1, 1]]) * 0.25
-    t_kernel = np.ones((2, 2)) * 0.25
+def visualize_optical_flow(flow, frame):
+    h, w = flow.shape[:2]
 
-    fx = filter2(img1, x_kernel) + filter2(img2, x_kernel)
-    fy = filter2(img1, y_kernel) + filter2(img2, y_kernel)
-    ft = filter2(img1, -t_kernel) + filter2(img2, t_kernel)
+    # Отрисовка стрелок на изображении
+    step = 10
+    for y in range(0, h, step):
+        for x in range(0, w, step):
+            pt1 = (x, y)
+            pt2 = (int(x + flow[y, x, 0]), int(y + flow[y, x, 1]))
+            cv2.arrowedLine(frame, pt1, pt2, (0, 255, 0), 1)
 
-    return [fx, fy, ft]
-
-
-def computeHS(before_img, after_img, alpha, delta):
-    # removing noise
-    before_img = cv2.GaussianBlur(before_img, (5, 5), 0)
-    after_img = cv2.GaussianBlur(after_img, (5, 5), 0)
-
-    # set up initial values
-    u = np.zeros((before_img.shape[0], before_img.shape[1]))
-    v = np.zeros((before_img.shape[0], before_img.shape[1]))
-    fx, fy, ft = get_derivatives(before_img, after_img)
-    avg_kernel = np.array([[1 / 12, 1 / 6, 1 / 12],
-                           [1 / 6, 0, 1 / 6],
-                           [1 / 12, 1 / 6, 1 / 12]], float)
-    iter_counter = 0
-    while True:
-        iter_counter += 1
-        u_avg = filter2(u, avg_kernel)
-        v_avg = filter2(v, avg_kernel)
-        p = fx * u_avg + fy * v_avg + ft
-        d = 4 * alpha ** 2 + fx ** 2 + fy ** 2
-        prev = u
-
-        u = u_avg - fx * (p / d)
-        v = v_avg - fy * (p / d)
-
-        diff = np.linalg.norm(u - prev, 2)
-        # converges check (at most 300 iterations)
-        if diff < delta or iter_counter > 300:
-            # print("iteration number: ", iter_counter)
-            break
-
-    draw_quiver(u, v, before_img)
-
-    return [u, v]
+    return frame
 
 
-def extract_frames(video_path_inner):
-    # Открываем видеофайл
+def video_stream_processing(video_path_inner, method, **kwargs):
     cap = cv2.VideoCapture(video_path_inner)
 
-    # Проверяем, открыт ли файл
-    if not cap.isOpened():
-        print("Ошибка при открытии видеофайла")
-        return
+    # Читаем первый кадр
+    ret, frame1 = cap.read()
 
-    frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    frame1 = None
-    # Читаем видеофайл кадр за кадром
-    for i in range(frame_count):
-        ret, frame = cap.read()
+    while True:
+        # Читаем следующий кадр
+        ret, frame2 = cap.read()
 
-        # Проверяем, успешно ли был прочитан кадр
         if not ret:
-            print(f"Ошибка при чтении кадра {i}")
             break
 
-        gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        frame2 = frame1
-        frame1 = gray_frame
-        if i != 0:
-            u, v = computeHS(frame1, frame2, alpha=15, delta=10 ** -1)
+        # Вычисляем оптический поток
+        flow = method(frame1=frame1, frame2=frame2, kwargs=kwargs)
+
+        # Визуализируем оптический поток
+        frame_with_flow = visualize_optical_flow(flow[0], frame1)
+
+        # Отображаем кадр с оптическим потоком
+        cv2.imshow('Optical Flow', frame_with_flow)
+
+        # Переходим к следующему кадру
+        frame1 = frame2
+
+        # Для остановки видео по нажатию клавиши 'q'
+        if cv2.waitKey(25) & 0xFF == ord('q'):
+            break
 
     # Закрываем видеофайл после обработки
     cap.release()
-    print("Обработано кадров:", frame_count)
+    cv2.destroyAllWindows()
 
 
-if __name__ == '__main__':
-    video_path = "videoplayback.mp4"
-    extract_frames(video_path)
+def methodLK(frame1, frame2, kwargs):
+    prev_pts = goodFeaturesToTrack(frame1, False)
+    next_pts = goodFeaturesToTrack(frame2, False)
+    flow = cv2.calcOpticalFlowPyrLK(frame1, frame2, prev_pts, next_pts)
+    return flow
+
+
+# Пример использования метода
+video_path = "videoplayback.mp4"
+video_stream_processing(video_path, methodLK)
