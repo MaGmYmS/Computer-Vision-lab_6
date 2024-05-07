@@ -25,16 +25,16 @@ def goodFeaturesToTrack(image, draw_corners=False):
     return corners
 
 
-def visualize_optical_flow(flow, frame):
-    h, w = flow.shape[:2]
-
+def visualize_optical_flow(point_new, point_old, state, frame):
     # Отрисовка стрелок на изображении
-    step = 10
-    for y in range(0, h, step):
-        for x in range(0, w, step):
-            pt1 = (x, y)
-            pt2 = (int(x + flow[y, x, 0]), int(y + flow[y, x, 1]))
-            cv2.arrowedLine(frame, pt1, pt2, (0, 255, 0), 1)
+    good_new = point_new[state == 1]
+    good_old = point_old[state == 1]
+
+    for i, (new, old) in enumerate(zip(good_new, good_old)):
+        a, b = new.ravel()
+        c, d = old.ravel()
+        if np.sqrt((a - c) ** 2 + (b - d) ** 2) > 0.5:
+            frame = cv2.arrowedLine(frame, (int(c), int(d)), (int(a), int(b)), (0, 255, 0), 2)
 
     return frame
 
@@ -53,10 +53,10 @@ def video_stream_processing(video_path_inner, method, **kwargs):
             break
 
         # Вычисляем оптический поток
-        flow = method(frame1=frame1, frame2=frame2, kwargs=kwargs)
+        (new_points, state, error), old_points = method(frame1=frame1, frame2=frame2, kwargs=kwargs)
 
         # Визуализируем оптический поток
-        frame_with_flow = visualize_optical_flow(flow[0], frame1)
+        frame_with_flow = visualize_optical_flow(new_points, old_points, state, frame1)
 
         # Отображаем кадр с оптическим потоком
         cv2.imshow('Optical Flow', frame_with_flow)
@@ -77,7 +77,7 @@ def methodLK(frame1, frame2, kwargs):
     prev_pts = goodFeaturesToTrack(frame1, False)
     next_pts = goodFeaturesToTrack(frame2, False)
     flow = cv2.calcOpticalFlowPyrLK(frame1, frame2, prev_pts, next_pts)
-    return flow
+    return flow, prev_pts
 
 
 # Пример использования метода
