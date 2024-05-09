@@ -22,7 +22,7 @@ def goodFeaturesToTrack(image, draw_corners=False):
         cv2.waitKey(0)
         cv2.destroyAllWindows()
 
-    return corners
+    return corners_return
 
 
 def visualize_optical_flow(point_new, point_old, state, frame):
@@ -36,7 +36,7 @@ def visualize_optical_flow(point_new, point_old, state, frame):
         if np.sqrt((a - c) ** 2 + (b - d) ** 2) > 0.5:
             frame = cv2.arrowedLine(frame, (int(c), int(d)), (int(a), int(b)), (0, 255, 0), 2)
 
-    return frame
+    return frame.astype(np.uint8)
 
 
 def video_stream_processing(video_path_inner, method, **kwargs):
@@ -67,7 +67,6 @@ def video_stream_processing(video_path_inner, method, **kwargs):
         # Для остановки видео по нажатию клавиши 'q'
         if cv2.waitKey(25) & 0xFF == ord('q'):
             break
-
     # Закрываем видеофайл после обработки
     cap.release()
     cv2.destroyAllWindows()
@@ -76,7 +75,12 @@ def video_stream_processing(video_path_inner, method, **kwargs):
 def methodLK(frame1, frame2, kwargs):
     prev_pts = goodFeaturesToTrack(frame1, False)
     next_pts = goodFeaturesToTrack(frame2, False)
-    flow = cv2.calcOpticalFlowPyrLK(frame1, frame2, prev_pts, next_pts)
+    if "k" in kwargs.keys():
+        k = int(kwargs["k"])
+        flow = cv2.calcOpticalFlowPyrLK(frame1, frame2, prev_pts, next_pts, winSize=(k, k))
+    else:
+        flow = cv2.calcOpticalFlowPyrLK(frame1, frame2, prev_pts, next_pts)
+
     return flow, prev_pts
 
 
