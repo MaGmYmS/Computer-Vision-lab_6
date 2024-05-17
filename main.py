@@ -25,7 +25,7 @@ def goodFeaturesToTrack(image, draw_corners=False):
     return corners_return
 
 
-def visualize_optical_flow(point_new, point_old, state, frame):
+def visualize_optical_flowLK(point_new, point_old, state, frame):
     # Отрисовка стрелок на изображении
     good_new = point_new[state == 1]
     good_old = point_old[state == 1]
@@ -37,6 +37,16 @@ def visualize_optical_flow(point_new, point_old, state, frame):
             frame = cv2.arrowedLine(frame, (int(c), int(d)), (int(a), int(b)), (0, 255, 0), 2)
 
     return frame.astype(np.uint8)
+
+
+def visualize_optical_flowHS(frame1, flow):
+    hsv = np.zeros_like(frame1)
+    hsv[..., 1] = 255
+
+    mag, ang = cv2.cartToPolar(flow[..., 0], flow[..., 1])
+    hsv[..., 0] = ang * 180 / np.pi / 2
+    hsv[..., 2] = cv2.normalize(mag, None, 0, 255, cv2.NORM_MINMAX)
+    return cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
 
 
 def video_stream_processing(video_path_inner, method, **kwargs):
@@ -51,13 +61,8 @@ def video_stream_processing(video_path_inner, method, **kwargs):
 
         if not ret:
             break
-
         # Вычисляем оптический поток
-        (new_points, state, error), old_points = method(frame1=frame1, frame2=frame2, kwargs=kwargs)
-
-        # Визуализируем оптический поток
-        frame_with_flow = visualize_optical_flow(new_points, old_points, state, frame1)
-
+        frame_with_flow = method(frame1=frame1, frame2=frame2, kwargs=kwargs)
         # Отображаем кадр с оптическим потоком
         cv2.imshow('Optical Flow', frame_with_flow)
 
@@ -77,13 +82,30 @@ def methodLK(frame1, frame2, kwargs):
     next_pts = goodFeaturesToTrack(frame2, False)
     if "k" in kwargs.keys():
         k = int(kwargs["k"])
-        flow = cv2.calcOpticalFlowPyrLK(frame1, frame2, prev_pts, next_pts, winSize=(k, k))
+        (new_points, state, error) = cv2.calcOpticalFlowPyrLK(frame1, frame2, prev_pts, next_pts, winSize=(k, k))
     else:
-        flow = cv2.calcOpticalFlowPyrLK(frame1, frame2, prev_pts, next_pts)
+        (new_points, state, error) = cv2.calcOpticalFlowPyrLK(frame1, frame2, prev_pts, next_pts)
 
-    return flow, prev_pts
+    return visualize_optical_flowLK(point_new=new_points, point_old=prev_pts, state=state, frame=frame1)
+
+
+def methodHS(frame1, frame2, kwargs):
+    pyr_scale = 0.5
+    levels = 3
+    winsize = 15
+    iterations = 3
+    poly_n = 5
+    poly_sigma = 1.2
+    flags = 0
+    frame1_gray = cv2.cvtColor(frame1, cv2.COLOR_BGR2GRAY)
+    frame2_gray = cv2.cvtColor(frame2, cv2.COLOR_BGR2GRAY)
+    # Вычисляем оптический поток с использованием метода Farneback
+    flow = cv2.calcOpticalFlowFarneback(frame1_gray, frame2_gray, None, pyr_scale, levels, winsize, iterations, poly_n,
+                                        poly_sigma, flags)
+    return visualize_optical_flowHS(frame1, flow)
 
 
 # Пример использования метода
 video_path = "videoplayback.mp4"
 video_stream_processing(video_path, methodLK)
+video_stream_processing(video_path, methodHS)
