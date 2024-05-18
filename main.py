@@ -100,8 +100,8 @@ def methodHS(frame1, frame2, kwargs):
     frame1_gray = cv2.cvtColor(frame1, cv2.COLOR_BGR2GRAY)
     frame2_gray = cv2.cvtColor(frame2, cv2.COLOR_BGR2GRAY)
     # Вычисляем оптический поток с использованием метода Farneback
-    flow = cv2.calcOpticalFlowFarneback(frame1_gray, frame2_gray, None, pyr_scale, levels, winsize, iterations, poly_n,
-                                        poly_sigma, flags)
+    flow = cv2.calcOpticalFlowFarneback(frame1_gray, frame2_gray, None, pyr_scale, levels, winsize, iterations,
+                                        poly_n, poly_sigma, flags)
     return visualize_optical_flowHS(frame1, flow)
 
 
